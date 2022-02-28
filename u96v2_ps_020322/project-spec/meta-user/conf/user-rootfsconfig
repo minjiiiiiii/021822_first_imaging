@@ -4,3 +4,5 @@
 CONFIG_gpio-demo
 CONFIG_peekpoke
 CONFIG_first-imaging
+CONFIG_first-imaging-dev
+CONFIG_first-imaging-dbg
