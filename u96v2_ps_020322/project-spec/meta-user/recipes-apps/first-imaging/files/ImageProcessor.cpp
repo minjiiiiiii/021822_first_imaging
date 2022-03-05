@@ -27,9 +27,10 @@ int ImageProcessor::normal_process_iq(bool debugFlag, int16_t* data_i, int16_t* 
     if (debugFlag) {
         start = clock();
         std::cout << "------------------------------" << std::endl;
-        std::cout << "NON SIMD PREPROCESSING IQ START..." << std::endl;
+        std::cout << "NON SIMD PREPROCESSING IQ START...dddddddddaa" << std::endl;
+        
     }
-
+                                                                                                                          
     int raw_i, raw_q;
 
     for (int i=0; i < 512 * 256; i++) {
