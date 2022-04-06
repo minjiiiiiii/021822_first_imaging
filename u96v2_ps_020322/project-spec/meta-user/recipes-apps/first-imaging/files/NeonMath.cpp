@@ -30,16 +30,18 @@ float32x4_t log_ps(float32x4_t x) {
 
   	float32x4_t z = vmulq_f32(x,x); // x^2
 
-  	float32x4_t y = vdupq_n_f32(c_cephes_log_p0);
+  	float32x4_t y = vdupq_n_f32(c_cephes_log_p0);   //samples  
   	y = vmlaq_f32(vdupq_n_f32(c_cephes_log_p1), y, x); // y = p1 + y*x
   	y = vmlaq_f32(vdupq_n_f32(c_cephes_log_p2), y, x); // y = p2 + (p1+y*x)*x
   	y = vmlaq_f32(vdupq_n_f32(c_cephes_log_p3), y, x); // y = p3 + y*x
-  	y = vmlaq_f32(vdupq_n_f32(c_cephes_log_p4), y, x); // y = p4 + y*x
+	/*
+	y = vmlaq_f32(vdupq_n_f32(c_cephes_log_p4), y, x); // y = p4 + y*x
   	y = vmlaq_f32(vdupq_n_f32(c_cephes_log_p5), y, x); // y = p5+ y*x
-  	y = vmlaq_f32(vdupq_n_f32(c_cephes_log_p6), y, x); // y = p6 + y*x
+	y = vmlaq_f32(vdupq_n_f32(c_cephes_log_p6), y, x); // y = p6 + y*x
   	y = vmlaq_f32(vdupq_n_f32(c_cephes_log_p7), y, x); // y = p7 + y*x
   	y = vmlaq_f32(vdupq_n_f32(c_cephes_log_p8), y, x); // y = p8 + y*x
-  	y = vmulq_f32(y, x); // y = x * y
+  	*/
+	y = vmulq_f32(y, x); // y = x * y
   	y = vmulq_f32(y, z); // y = y * x^2
 
   	tmp = vmulq_f32(e, vdupq_n_f32(c_cephes_log_q1));

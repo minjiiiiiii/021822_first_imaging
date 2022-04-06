@@ -45,15 +45,46 @@ int main(int argc, char *argv[])
 	result_code = iProc->normal_log_compression(debug);
 	result_code = iProc->process_iq(debug, dHand->neon_data_I, dHand->neon_data_Q);
 	result_code = iProc->log_compression(debug);
+
+	result_code = iProc->compare_result(debug);
 	result_code = iProc->scan_conversion(debug);
+
+	/*
+	// non_neon_data_unsigned[i] -non neon iq data
+	std::ofstream non_neon_iq_fp;
+	non_neon_iq_fp.open("/usr/bin/data/non_neon_iq_image.bin", ios::out | ios :: binary );
+    non_neon_iq_fp.write((char*)iProc->non_neon_data_unsigned, sizeof(*(iProc->non_neon_data_unsigned)) * 512 * 256);
+	non_neon_iq_fp.close(); 
+	*/
+
+
+	std::ofstream non_neon_fp;
+	non_neon_fp.open("/usr/bin/data/non_neon_log_image.bin", ios::out | ios :: binary );
+    non_neon_fp.write((char*)iProc->non_neon_log_data, sizeof(*(iProc->non_neon_log_data)) * 512 * 256);
+	non_neon_fp.close(); 
+	
+	/*
+   //non_neon_log_data_xnor
+	std::ofstream non_neon_xnor_fp;
+	non_neon_xnor_fp.open("/usr/bin/data/non_neon_log_xnor_image.bin", ios::out | ios :: binary );
+    non_neon_xnor_fp.write((char*)iProc->non_neon_log_data_xnor, sizeof(*(iProc->non_neon_log_data_xnor)) * 512 * 256);
+	non_neon_xnor_fp.close(); 	
+	*/
+
+
+	std::ofstream neon_fp;
+	neon_fp.open("/usr/bin/data/neon_log_image.bin", ios::out | ios :: binary );
+    neon_fp.write((char*)iProc-> neon_stored_data, sizeof(*(iProc-> neon_stored_data)) *512 * 256);
+	neon_fp.close(); 
 
 
     std::ofstream fp;
-    fp.open("/usr/bin/data/result_image.bin", ios::out | ios :: binary );
-    fp.write((char*)iProc->result_image, sizeof(iProc->result_image));
-	fp.close();
-
-
+    
+	fp.open("/usr/bin/data/result_image.bin", ios::out | ios :: binary );
+    fp.write((char*)iProc->result_image, sizeof(*(iProc->result_image)) * 320 * 240);
+	fp.close(); 
+	
+	
 	delete dHand;
 	delete iProc;
 	

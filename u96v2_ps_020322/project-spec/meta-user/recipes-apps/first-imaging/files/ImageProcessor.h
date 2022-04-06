@@ -23,16 +23,28 @@ namespace iQoLi{
         int log_compression(bool debugFlag);
         int scan_conversion(bool debugFlag);
 
+        int compare_result(bool debugFlag);
+
+
         str_SC generate_Param_SC();
     
     public:
 		int16x4_t* neon_data_signed;
         uint16x4_t* neon_data_unsigned;
-        uint32x4_t* neon_expanded;
+        //uint32x4_t* neon_expanded;
+        uint32x4_t* neon_iq_data;
+        uint16x4_t* neon_log_data;
+        
         uint8_t* result_image;
-
+       
         float* non_neon_data_unsigned;
+        float* non_neon_data_unsigned_xsqrt;
         uint16_t* non_neon_log_data;
+        uint16_t* non_neon_log_data_xnor;
+        uint32_t* neon_iq_stored_data; 
+        uint16_t* neon_stored_data;
+        uint32_t* err_iq;
+        uint16_t* err_log;
 
         str_SC sc_params;
 	};

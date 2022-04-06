@@ -7,12 +7,22 @@ using namespace iQoLi;
 ImageProcessor::ImageProcessor(){
     neon_data_signed = (int16x4_t*)malloc(512 * 256 * sizeof(int16x4_t));
     neon_data_unsigned = (uint16x4_t*)malloc(512 * 256 * sizeof(uint16x4_t));
-    neon_expanded = (uint32x4_t*)malloc(512 * 256 * sizeof(uint32x4_t));
+    //neon_expanded = (uint32x4_t*)malloc(512 * 256 * sizeof(uint32x4_t));
+    neon_iq_data = (uint32x4_t*)malloc(512 * 256 * sizeof(uint32x4_t)); 
+    neon_log_data = (uint16x4_t*)malloc(512 * 256 * sizeof(uint16x4_t));   //vectorized log data 
+
 
     result_image = (uint8_t*)malloc(320 * 240 * sizeof(uint8_t));
-
+   
     non_neon_data_unsigned = (float*)malloc(512 * 256 * sizeof(float));
+    non_neon_data_unsigned_xsqrt = (float*)malloc(512 * 256 * sizeof(float));
     non_neon_log_data = (uint16_t*)malloc(512 * 256 * sizeof(uint16_t));
+    non_neon_log_data_xnor = (uint16_t*)malloc(512 * 256 * sizeof(uint16_t)); //normalization x 
+    neon_iq_stored_data =  (uint32_t*)malloc(512 * 256 * sizeof(uint32_t));  //neon data-> store
+    neon_stored_data =  (uint16_t*)malloc(512 * 256 * sizeof(uint16_t));     //neon data-> store
+    err_iq =  (uint32_t*)malloc(512 * 256 * sizeof(uint32_t));               //for error calculation 
+    err_log =  (uint16_t*)malloc(512 * 256 * sizeof(uint16_t));              //for error calculation
+
 
     sc_params = generate_Param_SC();
 }
@@ -27,17 +37,19 @@ int ImageProcessor::normal_process_iq(bool debugFlag, int16_t* data_i, int16_t* 
     if (debugFlag) {
         start = clock();
         std::cout << "------------------------------" << std::endl;
-        std::cout << "NON SIMD PREPROCESSING IQ START...dddddddddaa" << std::endl;
+        std::cout << "NON SIMD PREPROCESSING IQ START..." << std::endl;
         
     }
                                                                                                                           
     int raw_i, raw_q;
+   
 
     for (int i=0; i < 512 * 256; i++) {
         raw_i = data_i[i] * data_i[i];
         raw_q = data_q[i] * data_q[i];
-
+        non_neon_data_unsigned_xsqrt[i]= raw_i + raw_q; //execution time -> delete this
         non_neon_data_unsigned[i] = std::sqrt(raw_i + raw_q);
+        
     }
     
     if (debugFlag) {
@@ -58,7 +70,7 @@ int ImageProcessor::normal_log_compression(bool debugFlag) {
         std::cout << "------------------------------" << std::endl;
         std::cout << "NON SIMD LOG COMPRESSION START..." << std::endl;
     }
-
+   
     int num_iter = (512 * 256);
 
     float max = 0;
@@ -71,6 +83,8 @@ int ImageProcessor::normal_log_compression(bool debugFlag) {
     for(int i=0; i<num_iter; i++)
 	{
         non_neon_log_data[i] = (uint16_t) (20* (std::log10( (std::abs(non_neon_data_unsigned[i]) / max) + 0.001)) + 60.0);
+        //non_neon_log_data_xnor[i] = (uint16_t) (20* (std::log10( (std::abs(non_neon_data_unsigned[i])) + 0.001)) );
+
 
 	}
 
@@ -93,16 +107,22 @@ int ImageProcessor::process_iq(bool debugFlag, int16x4_t* data_i, int16x4_t* dat
         std::cout << "PREPROCESSING IQ START..." << std::endl;
     }
 
+    int num_iter = (512 * 256) >>2;
+
     uint16x4_t u16I, u16Q;
 	uint32x4_t u32I, u32Q;
-
-    u16I = vreinterpret_u16_s16(vabs_s16(*data_i));
-    u16Q = vreinterpret_u16_s16(vabs_s16(*data_q));
-    u32I = vmull_u16(u16I, u16I);
-    u32I = vmlal_u16(u32I, u16Q, u16Q);
+   
     
+    for(int i=0; i<num_iter; i++)
+	{
+		u16I = vreinterpret_u16_s16(vabs_s16(data_i[i]));
+        u16Q = vreinterpret_u16_s16(vabs_s16(data_q[i]));
+        u32I = vmull_u16(u16I, u16I);
+        u32I = vmlal_u16(u32I, u16Q, u16Q);
+        neon_iq_data[i]=u32I;
 
-    *neon_expanded = u32I;
+    }
+   
 
     if (debugFlag) {
         std::cout << "PREPROCESSING IQ SUCCESS" << std::endl;
@@ -113,42 +133,152 @@ int ImageProcessor::process_iq(bool debugFlag, int16x4_t* data_i, int16x4_t* dat
 	return 0;
 }
 
+
 int ImageProcessor::log_compression(bool debugFlag) {
     clock_t start, end;
-
+    float scale = float(Param_Log_ScaleupFactor);
     if (debugFlag) {
         start = clock();
         std::cout << "------------------------------" << std::endl;
         std::cout << "LOG COMPRESSION START..." << std::endl;
         std::cout << "LOG SCALE UP FACTOR : " <<  Param_Log_ScaleupFactor * Param_Log_Nat2Ten << std::endl;
+        std::cout << "scale : " << scale << std::endl; //scale : 157.534
     }
-
+  
     uint32x4_t tmp_uint32;
-	float32x4_t tmp_float32;
+	float32x4_t tmp_float32; 
+    
+    /*
+    float32x4_t v_test =vmulq_n_f32((log_ps(vdupq_n_f32((float32_t)12))),float32_t(0.43429)); // log_ps-> ln
+    float32_t* v_testP; 
+    v_testP =  (float32_t*)malloc(sizeof(float32_t));
+    */
 
 	uint32x4_t v_one = vdupq_n_u32((uint32_t)1);
-	float scale = float(Param_Log_ScaleupFactor);
-	
 
-	int num_iter = (512 * 256);
+	int num_iter = (512 * 256) >> 2;
 
 	for(int i=0; i<num_iter; i++)
 	{
-		tmp_uint32 = vaddq_u32(v_one, neon_expanded[i]);
-		tmp_float32 = 10* log_ps(vcvtq_f32_u32(tmp_uint32));
-		tmp_float32 = vmulq_n_f32(tmp_float32, scale);
-		tmp_uint32 = vcvtq_u32_f32(tmp_float32);
-		neon_data_unsigned[i] = vmovn_u32(tmp_uint32);
+		tmp_uint32 = vaddq_u32(v_one, neon_iq_data[i]);
+        tmp_float32 =log_ps(vcvtq_f32_u32(tmp_uint32));  
+        //tmp_float32 = 10*log_ps(vcvtq_f32_u32(tmp_uint32)); 
+        //tmp_float32 = vmulq_n_f32(tmp_float32, scale);  //-> max error of log data :64451
+        //tmp_float32 = vmulq_n_f32(tmp_float32, float32_t(0.43429));
+        tmp_float32 = vmulq_n_f32(tmp_float32, float32_t(4.3429));
+        tmp_uint32 = vcvtq_u32_f32(tmp_float32);
+        neon_log_data[i] = vmovn_u32(tmp_uint32);
+       
 	}
 
+
     if (debugFlag) {
-        std::cout << "LOG COMPRESSION SUCCESS" << std::endl;
+        
+        std::cout << "SIMD LOG COMPRESSION SUCCESS" << std::endl;
         end = clock();
         std::cout << "EXECUTION TIME : " << ((double)(end - start) / CLOCKS_PER_SEC) * 1000 << " ms" << std::endl;
         std::cout << "------------------------------" << std::endl;
+        
+       /*
+        vst1q_f32(v_testP,v_test); 
+         for (int i=0; i<4; i=i+1) {
+            
+            std::cout << "log test" << v_testP[i] <<std::endl;
+        }
+        */
+        
+
     }
 	return 0;
 }
+
+int ImageProcessor::compare_result(bool debugFlag) {
+    
+    if(debugFlag) {
+        
+        
+        //neon_log_data[i] = vmovn_u32(tmp_uint32);
+        int num_iter = (512 * 256); 
+        int err; 
+        for (int i=0; i< num_iter; i=i+4) {
+            vst1q_u32(&neon_iq_stored_data[i], neon_iq_data[i/4]);
+        }
+
+        for (int i=0; i< num_iter; i=i+4) {
+            vst1_u16(&neon_stored_data[i], neon_log_data[i/4]);
+        }
+        std::cout << "------------------------------" << std::endl;
+        std::cout << "Comparing NEON/NON NEON IQ DATA" << std::endl; 
+        std::cout << "------------------------------" << std::endl;
+        
+        std::cout << "1st NON NEON IQ DATA: " << non_neon_data_unsigned_xsqrt[0] <<std::endl;
+        std::cout << "2nd NON NEON IQ DATA: " << non_neon_data_unsigned_xsqrt[1] <<std::endl;
+        std::cout << "3rd NON NEON IQ DATA: " << non_neon_data_unsigned_xsqrt[2] <<std::endl;
+        std::cout << "4th NON NEON IQ DATA: " << non_neon_data_unsigned_xsqrt[3] <<std::endl; 
+
+        std::cout << "------------------------------" << std::endl;
+        std::cout << "1st NEON IQ DATA: " << neon_iq_stored_data[0] <<std::endl;
+        std::cout << "2nd NEON IQ DATA: " << neon_iq_stored_data[1] <<std::endl;
+        std::cout << "3rd NEON IQ DATA: " << neon_iq_stored_data[2] <<std::endl;
+        std::cout << "4th NEON IQ DATA: " << neon_iq_stored_data[3] <<std::endl; 
+
+        std::cout << "------------------------------" << std::endl;
+        std::cout << "101st NON NEON IQ DATA: " << non_neon_data_unsigned_xsqrt[100] <<std::endl;
+        std::cout << "102nd NON NEON IQ DATA: " << non_neon_data_unsigned_xsqrt[101] <<std::endl;
+        std::cout << "103rd NON NEON IQ DATA: " << non_neon_data_unsigned_xsqrt[102] <<std::endl;
+        std::cout << "104th NON NEON IQ DATA: " << non_neon_data_unsigned_xsqrt[103] <<std::endl; 
+        std::cout << "------------------------------" << std::endl;
+        std::cout << "101st NEON IQ DATA: " << neon_iq_stored_data[100] <<std::endl;
+        std::cout << "102nd NEON IQ DATA: " << neon_iq_stored_data[101] <<std::endl;
+        std::cout << "103rd NEON IQ DATA: " << neon_iq_stored_data[102] <<std::endl;
+        std::cout << "104th NEON IQ DATA: " << neon_iq_stored_data[103] <<std::endl; 
+
+        std::cout << "------------------------------" << std::endl;
+        std::cout << "Comparing NEON/NON NEON LOG COMPRESSION DATA" << std::endl; 
+        std::cout << "------------------------------" << std::endl;
+        std::cout << "1st NON NEON LOG COMPRESSION DATA : " <<  non_neon_log_data[0] <<std::endl; 
+        std::cout << "2nd NON NEON LOG COMPRESSION DATA : " <<  non_neon_log_data[1] <<std::endl;
+        std::cout << "3rd NON NEON LOG COMPRESSION DATA : " <<  non_neon_log_data[2] <<std::endl;
+        std::cout << "4th NON NEON LOG COMPRESSION DATA : " <<  non_neon_log_data[3] <<std::endl;
+       
+        std::cout << "------------------------------" << std::endl;
+        std::cout << "1st NEON LOG COMPRESSION DATA : " << neon_stored_data[0] <<std::endl; 
+        std::cout << "2nd NEON LOG COMPRESSION DATA : " <<  neon_stored_data[1] <<std::endl;
+        std::cout << "3rd NEON LOG COMPRESSION DATA : " <<  neon_stored_data[2] <<std::endl;
+        std::cout << "4th NEON LOG COMPRESSION DATA : " <<  neon_stored_data[3] <<std::endl;
+
+        std::cout << "------------------------------" << std::endl;
+        std::cout << "101th NON NEON LOG COMPRESSION DATA : " << non_neon_log_data[100] <<std::endl;
+        std::cout << "102nd NON NEON LOG COMPRESSION DATA : " <<  non_neon_log_data[101] <<std::endl;
+        std::cout << "103rd NON NEON LOG COMPRESSION DATA : " <<  non_neon_log_data[102] <<std::endl;
+        std::cout << "104th NON NEON LOG COMPRESSION DATA : " <<  non_neon_log_data[103] <<std::endl;
+
+        std::cout << "------------------------------" << std::endl;
+        std::cout << "101th NEON LOG COMPRESSION DATA : " << neon_stored_data[100] <<std::endl;
+        std::cout << "102nd NEON LOG COMPRESSION DATA : " << neon_stored_data[101] <<std::endl;
+        std::cout << "103rd NEON LOG COMPRESSION DATA : " << neon_stored_data[102] <<std::endl;
+        std::cout << "104th NEON LOG COMPRESSION DATA : " << neon_stored_data[103] <<std::endl;
+     
+       uint32_t max32 = 0; 
+       uint16_t max16 = 0;
+      
+       for (int i=0; i< num_iter; i=i+4) {
+           err_iq[i] = ((uint32_t)non_neon_data_unsigned_xsqrt[i]) - neon_iq_stored_data[i];
+           err_log[i] =  non_neon_log_data[i] -  neon_stored_data[i];
+                if (max32 < err_iq[i]) max32 = err_iq[i];
+                if (max16 < err_log[i]) max16 = err_log[i];
+               
+        }
+        std::cout << "max error of iq data :" << max32 <<std::endl;
+        std::cout << "max error of log data :" << max16 <<std::endl;
+        
+
+    }
+    return 0; 
+
+
+}
+
 
 int ImageProcessor::scan_conversion(bool debugFlag) {
     clock_t start, end;
@@ -229,6 +359,7 @@ int ImageProcessor::scan_conversion(bool debugFlag) {
 
     return 0;
 }
+
 
 str_SC ImageProcessor::generate_Param_SC() {
     str_SC param_sc;

@@ -120,13 +120,14 @@ int DataHandler::convert_neon(bool debugFlag) {
         std::cout << "NEON DATA CONVERSION START..." << std::endl;
     }
 
+
     int num_iter = (512*256) >> 2;
 
     for (int i=0; i < num_iter; i++) {
         neon_data_I[i] = vld1_s16(raw_data_I + 4 * i);
         neon_data_Q[i] = vld1_s16(raw_data_Q + 4 * i);
     }
-
+   
     if (debugFlag) {
         end = clock();
         std::cout << "NEON DATA CONVERSION SUCCESS" << std::endl;
